@@ -19,9 +19,4 @@
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
   </ItemGroup>
-  <ItemGroup>
-    <Text Include="input.txt">
-      <Filter>Arquivos de Cabeçalho</Filter>
-    </Text>
-  </ItemGroup>
 </Project>
