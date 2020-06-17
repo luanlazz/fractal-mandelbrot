@@ -1,11 +1,27 @@
 // MandelbrotFractal.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
 //
+#define HAVE_STRUCT_TIMESPEC
 
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <pthread.h>
 
 using namespace std;
+
+int imageWidth;
+int imageHeight;
+int numThreads;
+
+typedef struct threadData
+{
+	int** lines;
+	int yStart;
+	int yEnd;
+	int imageWidth;
+	int imageHeight;
+	int threadNum;
+} threadData;
 
 int findMandelbrot(double cr, double ci, int max_iterations)
 {
@@ -36,7 +52,43 @@ double mapToImaginary(int y, int imageHeight, double minI, double maxI)
 	return y * (range / imageHeight) + minI;
 }
 
-void gerateImage(unsigned int** lines, int imageWidth, int imageHeight) 
+void *processLines(void* arg)
+{
+	double maxN = 5000;
+	double minR = -1.5;
+	double maxR = 0.5;
+	double minI = -1.0;
+	double maxI = 1.0;
+
+	threadData* tData = (threadData*)arg;
+
+	fprintf(stderr, "Inicio Thread %i: processando de %i a %i\n", 
+		tData->threadNum,
+		tData->yStart,
+		tData->yEnd);
+
+	// for every pixel
+	for (int y = tData->yStart; y < tData->yEnd; y++) // rows
+	{
+		for (int x = 0; x < tData->imageWidth; x++) // pixels in row
+		{
+			// find the real and imaginary values for c
+			double cr = mapToReal(x, tData->imageWidth, minR, maxR);
+			double ci = mapToImaginary(y, tData->imageHeight, minI, maxI);
+
+			// find the number of iterations in the mandelbrot
+			int n = findMandelbrot(cr, ci, maxN);
+
+			tData->lines[y][x] = n;
+		}
+	}
+
+	fprintf(stderr, "Thread %i finalizou \n", tData->threadNum);
+
+	return 0;
+}
+
+void gerateImage(int** lines, int imageWidth, int imageHeight)
 {
 	// Open the output file, write the PPM header
 	ofstream fout("output_image.ppm");
@@ -46,14 +98,16 @@ void gerateImage(unsigned int** lines, int imageWidth, int imageHeight)
 
 	int r, g, b;
 
+	fprintf(stderr, "Gerando imagem...\n");
+
 	for (int y = 0; y < imageHeight; y++)
 	{
 		for (int x = 0; x < imageWidth; x++)
 		{
 			// map the resulting number an RGB value
-			r = ((int)(lines[x][y] * sinf(lines[x][y])) % 256);
-			g = ((lines[x][y] * 3) % 256);
-			b = (lines[x][y] % 256);
+			r = ((int)(lines[y][x] * sinf(lines[y][x])) % 256);
+			g = ((lines[y][x] * 3) % 256);
+			b = (lines[y][x] % 256);
 
 			// output it to the image
 			fout << r << " " << g << " " << b << " ";
@@ -65,39 +119,61 @@ void gerateImage(unsigned int** lines, int imageWidth, int imageHeight)
 
 int main()
 {
-	int imageWidth = 1024;
-	int imageHeight = 1024;
-	double maxN = 30;
-	double minR = -1.5;
-	double maxR = 0.7;
-	double minI = -1.0;
-	double maxI = 1.0;
-	unsigned int** lines = NULL;
+	imageWidth = 1024;
+	imageHeight = 1024;
+	numThreads = 6;
 
-	lines = (unsigned int**)malloc(imageHeight * sizeof(unsigned int*));
-	for (int i = 0; i < imageWidth; i++)
+	int i;
+
+	int** lines = NULL;
+
+	lines = (int**)malloc(imageHeight * sizeof(unsigned int*));
+	for (i = 0; i < imageWidth; i++)
 	{
-		lines[i] = (unsigned int*)malloc(imageWidth * sizeof(unsigned int));
+		lines[i] = (int*)malloc(imageWidth * sizeof(unsigned int));
 	}
 
-	// for every pixel
-	for (int y = 0; y < imageHeight; y++) // rows
+	threadData *tData = (threadData*)malloc((int)numThreads * sizeof(threadData));
+
+	pthread_t *threads = (pthread_t*)malloc(numThreads * sizeof(pthread_t));
+
+	int linesPerThread = imageHeight / numThreads;
+
+	for (i = 0; i < numThreads; i++)
 	{
-		for (int x = 0; x < imageWidth; x++) // pixels in row
-		{
-			// find the real and imaginary values for c
-			double cr = mapToReal(x, imageWidth, minR, maxR);
-			double ci = mapToImaginary(y, imageHeight, minI, maxI);
+		tData[i].threadNum = i + 1;
+		tData[i].lines = lines;
+		tData[i].imageWidth = imageWidth;
+		tData[i].imageHeight = imageHeight;
+		tData[i].yStart = i * linesPerThread;
+		tData[i].yEnd = (i == numThreads - 1) ? imageHeight : (i + 1) * linesPerThread;
 
-			// find the number of iterations in the mandelbrot
-			int n = findMandelbrot(cr, ci, maxN);
+		fprintf(stderr, "Criando thread %i\n", tData[i].threadNum);
 
-			lines[x][y] = n;
-		}
+		pthread_create(&(threads[i]), NULL, processLines, &(tData[i]));
 	}
+
+	fprintf(stderr, "Main esperando as Threads terminarem\n");
+
+	for (i = 0; i < numThreads; i++)
+	{
+		fprintf(stderr, "Join da Thread %i\n", i + 1);
+
+		pthread_join(threads[i], NULL);
+	}
+
+	fprintf(stderr, "Finalizou join das Threads\n");
 
 	gerateImage(lines, imageWidth, imageHeight);
 
-	cout << "Finished!" << endl;
+	for (i = 0; i < imageHeight; i++)
+	{
+		free(lines[i]);
+	}
+
+	free(lines);
+
+	fprintf(stderr, "Finalizou!\n");
+
 	return 0;
 }
