@@ -1,10 +1,7 @@
-// MandelbrotFractal.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
-//
 #define HAVE_STRUCT_TIMESPEC
 
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <pthread.h>
 
 using namespace std;
@@ -54,7 +51,7 @@ double mapToImaginary(int y, int imageHeight, double minI, double maxI)
 
 void *processLines(void* arg)
 {
-	double maxN = 5000;
+	double maxN = 10000;
 	double minR = -1.5;
 	double maxR = 0.5;
 	double minI = -1.0;
@@ -121,7 +118,7 @@ int main()
 {
 	imageWidth = 1024;
 	imageHeight = 1024;
-	numThreads = 6;
+	numThreads = 4;
 
 	int i;
 
